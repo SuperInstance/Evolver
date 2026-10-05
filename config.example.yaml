@@ -1,0 +1,66 @@
+# evolver example config — GO/NO-GO verdict prompts.
+# This is the configuration that ran overnight 2026-10-05:
+# 13 generations, mean JEV score 0.60 -> 0.80, winner 0.923.
+#
+# Copy to config.yaml, edit the task, and run:
+#   python evolve.py --config config.yaml --generations 20
+
+loop: verdict-evolver
+
+task:
+  name: "GO/NO-GO verdicts with reasoning"
+  # {prompt} = the candidate prompt, {scenario} = the test case.
+  prompt_template: "{prompt}\n\nScenario: {scenario}"
+
+model:
+  # Two backends. local-ollama needs only `ollama serve` on this machine.
+  # ssh-ollama reaches a remote box (the overnight proof ran against an
+  # Oracle Cloud VM this way).
+  backend: local-ollama
+  model: lfm25-1.2b
+  num_predict: 120
+  # url: http://localhost:11434/api/generate   # local-ollama only
+  #
+  # --- ssh-ollama: uncomment and fill in ---
+  # backend: ssh-ollama
+  # ssh:
+  #   host: ubuntu@147.224.38.131
+  #   key: ~/.ssh/oracle-instance.key
+  #   proxy: "nc -X connect -x hatch-egress-proxy:3128 %h %p"
+  #   known_hosts: ./oracle-known-hosts   # pin in the workspace, not ~/.ssh
+
+scenarios:
+  - "A bridge sensor reports vibration 3x normal during a storm. Traffic is light."
+  - "The database backup failed twice this week. No restore has been tested in 6 months."
+  - "A new hire ships a feature Friday at 5pm with no tests. The deploy pipeline is green."
+
+seeds:
+  - "Decide GO or NO-GO for the scenario. Give one line of reasoning."
+  - "You are a careful engineer. Verdict GO or NO-GO, then one line of reasoning."
+  - "Scenario below. Output exactly: VERDICT: GO|NO-GO. REASON: one line."
+  - "Think about what could go wrong first. Then verdict GO or NO-GO with one line of reasoning."
+  - "Give a GO or NO-GO verdict. One line of reasoning. Be specific, no hedging."
+  - "You are a ship's captain. GO or NO-GO? One line of reasoning, plain words."
+
+population: 6
+keep: 3                 # top-K survive each generation
+pause_secs: 1           # politeness delay between model calls
+generations: 1          # per-invocation default; --generations overrides.
+                        # 1 = single generation (cron ticks it overnight).
+
+judge:
+  command: "~/workspace/skills/typesafe/bin/jev.py"
+  question: "Is this a clear GO or NO-GO verdict with sound one-line reasoning?"
+  true_label: "clear verdict and sound reasoning"
+  false_label: "unclear, missing verdict, or poor reasoning"
+
+mutations:
+  - {op: append, text: " Be specific."}
+  - {op: append, text: " Consider the downside first."}
+  - {op: append, text: " No hedging."}
+  - {op: append, text: " If unsure, say NO-GO."}
+  - {op: prepend, text: "You are a careful engineer. "}
+  - {op: replace, old: "one line of reasoning", new: "reasoning first, then the verdict"}
+  - {op: crossover}    # first half of one winner + second half of another
+
+ledger: ./ledger.jsonl
